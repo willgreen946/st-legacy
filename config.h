@@ -197,8 +197,8 @@ static Shortcut shortcuts[] = {
 	{ TERMMOD,              XK_o,           zoomreset,      {.f =  0} },
 	{ TERMMOD,              XK_C,           clipcopy,       {.i =  0} },
 	{ TERMMOD,              XK_V,           clippaste,      {.i =  0} },
-	{ ControlMask,          XK_k,     	kscrollup,      {.i = -1} },
-	{ ControlMask,          XK_j,  	 	kscrolldown,    {.i = -1} },
+	{ ShiftMask,          	XK_K,     	kscrollup,      {.i = -1} },
+	{ ShiftMask,          	XK_J,  	 	kscrolldown,    {.i = -1} },
 };
 
 /*
