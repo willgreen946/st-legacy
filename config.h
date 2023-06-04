@@ -5,7 +5,9 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "ubuntu mono:pixelsize=14:antialias=true:autohint=true";
+static char *fonts[] = { "ubuntu mono:pixelsize=14:antialias=true:autohint=true",
+			"terminus:pixelsize=14:antialias=true:autohint=true"};
+static int fonts_current = 0;
 static int borderpx = 4;
 
 /*
@@ -199,6 +201,7 @@ static Shortcut shortcuts[] = {
 	{ TERMMOD,              XK_V,           clippaste,      {.i =  0} },
 	{ ShiftMask,          	XK_K,     	kscrollup,      {.i = -1} },
 	{ ShiftMask,          	XK_J,  	 	kscrolldown,    {.i = -1} },
+	{ ShiftMask,		XK_F,		cyclefonts,	{} },
 };
 
 /*
