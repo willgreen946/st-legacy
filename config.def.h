@@ -5,8 +5,8 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *fonts[] = { "ubuntu mono:pixelsize=14:antialias=true:autohint=true",
-			"terminus:pixelsize=14:antialias=true:autohint=true"};
+static char *fonts[] = { "terminus:pixelsize=14:antialias=true:autohint=true",
+			"ubuntu mono:pixelsize=14:antialias=true:autohint=true"};
 static int fonts_current = 0;
 static int borderpx = 4;
 
@@ -98,46 +98,42 @@ unsigned int tabspaces = 8;
 /* bg opacity */
 float alpha = 1;
 
-/* Terminal colors (16 first used in escape sequence) */
-static const char *colorname[] = {
-	/* 8 normal colors */
-	"black",
-	"red3",
-	"green3",
-	"yellow3",
-	"blue2",
-	"magenta3",
-	"cyan3",
-	"gray90",
+typedef struct {
+	const char* const colors[258]; /* term colors */
+	unsigned int fg;
+	unsigned int bg;
+	unsigned int cs;	/*cursor*/
+	unsigned int rcs;
 
-	/* 8 bright colors */
-	"gray50",
-	"red",
-	"green",
-	"yellow",
-	"#5c5cff",
-	"magenta",
-	"cyan",
-	"white",
+} ColorScheme;
 
-	[255] = 0,
-
-	/* more colors can be added after 255 to use with DefaultXX */
-	"#cccccc",
-	"#555555",
-	"gray90", /* default foreground colour */
-	"#121212", /* default background colour */
+static const ColorScheme schemes[] = {
+	/* normal yellow */
+	{{"black", "red3", "green3", "yellow3",
+	  "blue2", "magenta3", "cyan3", "gray90",
+	  "gray50", "red", "green", "yellow",
+	  "#5c5cff", "magenta", "cyan", "white",
+	  [256] = "#f0f0f0", "#121212"}, 7, 0, 256, 257},
+	
+	/* matrix */
+	{{"black", "red3", "green3", "yellow3",
+	   "blue2", "magenta3", "cyan3", "gray90",
+	   "gray50","red", "green", "yellow",
+	   "#5c5cff", "magenta", "cyan", "white",
+	   [256] = "#008f11", "#121212"}, 256, 0, 256, 257},
 };
-
 
 /*
  * Default colors (colorname index)
  * foreground, background, cursor, reverse cursor
  */
-unsigned int defaultfg = 258;
-unsigned int defaultbg = 259;
-unsigned int defaultcs = 256;
-static unsigned int defaultrcs = 257;
+
+static const char * const * colorname;
+int colorscheme = 0;
+unsigned int defaultfg;
+unsigned int defaultbg;
+unsigned int defaultcs;
+static unsigned int defaultrcs;
 
 /*
  * Default shape of cursor
@@ -199,9 +195,11 @@ static Shortcut shortcuts[] = {
 	{ TERMMOD,              XK_o,           zoomreset,      {.f =  0} },
 	{ TERMMOD,              XK_C,           clipcopy,       {.i =  0} },
 	{ TERMMOD,              XK_V,           clippaste,      {.i =  0} },
-	{ ShiftMask,          	XK_K,     	kscrollup,      {.i = -1} },
-	{ ShiftMask,          	XK_J,  	 	kscrolldown,    {.i = -1} },
-	{ ShiftMask,		XK_F,		cyclefonts,	{} },
+	{ ControlMask,         	XK_k,     	kscrollup,      {.i = -1} },
+	{ ControlMask,         	XK_j,  	 	kscrolldown,    {.i = -1} },
+	{ ControlMask,		XK_f,		cyclefonts,	{} },
+	{ ControlMask,		XK_s,		nextscheme,	{.i = +1} },
+	{ ControlMask,		XK_d,		nextscheme,	{.i = -1} },
 };
 
 /*
