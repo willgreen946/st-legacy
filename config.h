@@ -197,9 +197,9 @@ static Shortcut shortcuts[] = {
 	{ TERMMOD,              XK_V,           clippaste,      {.i =  0} },
 	{ ControlMask,         	XK_k,     	kscrollup,      {.i = -1} },
 	{ ControlMask,         	XK_j,  	 	kscrolldown,    {.i = -1} },
-	{ ControlMask,		XK_f,		cyclefonts,	{} },
-	{ ControlMask,		XK_s,		nextscheme,	{.i = +1} },
-	{ ControlMask,		XK_d,		nextscheme,	{.i = -1} },
+	{ TERMMOD,		XK_F,		cyclefonts,	{} },
+	{ TERMMOD,		XK_C,		nextscheme,	{.i = +1} },
+	{ TERMMOD,		XK_S,		nextscheme,	{.i = -1} },
 };
 
 /*
