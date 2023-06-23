@@ -5,10 +5,8 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *fonts[] = { "terminus:pixelsize=14:antialias=true:autohint=true",
-			"ubuntu mono:pixelsize=14:antialias=true:autohint=true"};
-static int fonts_current = 0;
-static int borderpx = 4;
+static char *font = "terminus:pixelsize=14:antialias=true:autohint=true";
+static int borderpx = 2;
 
 /*
  * What program is execed by st depends of these precedence rules:
@@ -95,45 +93,61 @@ char *termname = "st-256color";
  */
 unsigned int tabspaces = 8;
 
-/* bg opacity */
-float alpha = 1;
+/* Terminal colors (16 first used in escape sequence) */
+static const char *colorname[] = {
+	/* 8 normal colors */
+	"black",
+	"red3",
+	"green3",
+	"yellow3",
+	"blue2",
+	"magenta3",
+	"#f26711",
+	"gray90",
 
-typedef struct {
-	const char* const colors[258]; /* term colors */
-	unsigned int fg;
-	unsigned int bg;
-	unsigned int cs;	/*cursor*/
-	unsigned int rcs;
+	/* 8 bright colors */
+	"gray50",
+	"red",
+	"green",
+	"yellow",
+	"#5c5cff",
+	"magenta",
+	"#f26711",
+	"white",
 
-} ColorScheme;
+	[255] = 0,
 
-static const ColorScheme schemes[] = {
-	/* normal yellow */
-	{{"black", "red3", "green3", "yellow3",
-	  "blue2", "magenta3", "cyan3", "gray90",
-	  "gray50", "red", "green", "yellow",
-	  "#5c5cff", "magenta", "cyan", "white",
-	  [256] = "#f0f0f0", "#121212"}, 7, 0, 256, 257},
-	
-	/* matrix */
-	{{"black", "red3", "green3", "yellow3",
-	   "blue2", "magenta3", "cyan3", "gray90",
-	   "gray50","red", "green", "yellow",
-	   "#5c5cff", "magenta", "cyan", "white",
-	   [256] = "#008f11", "#121212"}, 256, 0, 256, 257},
+	/* more colors can be added after 255 to use with DefaultXX */
+	"#cccccc",
+	"#f26711",
+	"#ffffff", /* default foreground colour */
+	"#000000", /* default background colour */
 };
+
 
 /*
  * Default colors (colorname index)
  * foreground, background, cursor, reverse cursor
  */
-
-static const char * const * colorname;
-int colorscheme = 0;
-unsigned int defaultfg;
-unsigned int defaultbg;
-unsigned int defaultcs;
-static unsigned int defaultrcs;
+unsigned int defaultfg = 258;
+unsigned int defaultbg = 259;
+unsigned int defaultcs = 256;
+static unsigned int defaultrcs = 257;
+unsigned int const currentBg = 6, buffSize = 2048;
+/// Enable double / triple click yanking / selection of word / line.
+int const mouseYank = 1, mouseSelect = 0;
+/// [Vim Browse] Colors for search results currently on screen.
+unsigned int const highlightBg = 256, highlightFg = 260;
+char const wDelS[] = "!\"#$%&'()*+,-./:;<=>?@[\\]^`{|}~", wDelL[] = " \t";
+char *nmKeys [] = {              ///< Shortcusts executed in normal mode
+  "R/Building\nN", "r/Building\n", "X/juli@machine\nN", "x/juli@machine\n",
+  "Q?[Leaving vim, starting execution]\n","F/: error:\nN", "f/: error:\n", "DQf"
+};
+unsigned int const amountNmKeys = sizeof(nmKeys) / sizeof(*nmKeys);
+/// Style of the {command, search} string shown in the right corner (y,v,V,/)
+Glyph styleSearch = {' ', ATTR_ITALIC | ATTR_BOLD_FAINT, 7, 16};
+Glyph style[] = {{' ',ATTR_ITALIC|ATTR_FAINT,16,16}, {' ',ATTR_ITALIC,232,11},
+                 {' ', ATTR_ITALIC, 232, 4}, {' ', ATTR_ITALIC, 232, 12}};
 
 /*
  * Default shape of cursor
@@ -191,15 +205,18 @@ static MouseShortcut mshortcuts[] = {
 static Shortcut shortcuts[] = {
 	/* mask                 keysym          function        argument */
 	{ XK_ANY_MOD,           XK_Break,       sendbreak,      {.i =  0} },
-	{ TERMMOD,              XK_i,           zoom,           {.f = -1} },
-	{ TERMMOD,              XK_o,           zoomreset,      {.f =  0} },
+	{ ControlMask,          XK_Print,       toggleprinter,  {.i =  0} },
+	{ ShiftMask,            XK_Print,       printscreen,    {.i =  0} },
+	{ XK_ANY_MOD,           XK_Print,       printsel,       {.i =  0} },
+	{ TERMMOD,              XK_Prior,       zoom,           {.f = +1} },
+	{ TERMMOD,              XK_Next,        zoom,           {.f = -1} },
+	{ TERMMOD,              XK_Home,        zoomreset,      {.f =  0} },
 	{ TERMMOD,              XK_C,           clipcopy,       {.i =  0} },
 	{ TERMMOD,              XK_V,           clippaste,      {.i =  0} },
-	{ ControlMask,         	XK_k,     	kscrollup,      {.i = -1} },
-	{ ControlMask,         	XK_j,  	 	kscrolldown,    {.i = -1} },
-	{ TERMMOD,		XK_F,		cyclefonts,	{} },
-	{ TERMMOD,		XK_C,		nextscheme,	{.i = +1} },
-	{ TERMMOD,		XK_S,		nextscheme,	{.i = -1} },
+	{ TERMMOD,              XK_Y,           selpaste,       {.i =  0} },
+	{ ShiftMask,            XK_Insert,      selpaste,       {.i =  0} },
+	{ TERMMOD,              XK_Num_Lock,    numlock,        {.i =  0} },
+	{ MODKEY,               XK_c,           normalMode,     {.i =  0} },
 };
 
 /*

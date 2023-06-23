@@ -19,6 +19,7 @@ char *argv0;
 #include "arg.h"
 #include "st.h"
 #include "win.h"
+#include "normalMode.h"
 
 /* types used in config.h */
 typedef struct {
@@ -59,9 +60,6 @@ static void zoom(const Arg *);
 static void zoomabs(const Arg *);
 static void zoomreset(const Arg *);
 static void ttysend(const Arg *);
-static void cyclefonts(const Arg *);
-static void nextscheme(const Arg *);
-static void selectscheme(const Arg *);
 
 /* config.h for applying patches and the configuration. */
 #include "config.h"
@@ -108,7 +106,6 @@ typedef struct {
 	XSetWindowAttributes attrs;
 	int scr;
 	int isfixed; /* is fixed geometry? */
-	int depth; /* bit depth */
 	int l, t; /* left and top offset */
 	int gm; /* geometry mask */
 } XWindow;
@@ -189,7 +186,6 @@ static void mousesel(XEvent *, int);
 static void mousereport(XEvent *);
 static char *kmap(KeySym, uint);
 static int match(uint, uint);
-static void updatescheme(void);
 
 static void run(void);
 static void usage(void);
@@ -248,7 +244,6 @@ static char *usedfont = NULL;
 static double usedfontsize = 0;
 static double defaultfontsize = 0;
 
-static char *opt_alpha = NULL;
 static char *opt_class = NULL;
 static char **opt_cmd  = NULL;
 static char *opt_embed = NULL;
@@ -267,6 +262,7 @@ clipcopy(const Arg *dummy)
 
 	free(xsel.clipboard);
 	xsel.clipboard = NULL;
+	xsetsel(getsel());
 
 	if (xsel.primary != NULL) {
 		xsel.clipboard = xstrdup(xsel.primary);
@@ -476,7 +472,6 @@ bpress(XEvent *e)
 {
 	int btn = e->xbutton.button;
 	struct timespec now;
-	int snap;
 
 	if (1 <= btn && btn <= 11)
 		buttons |= 1 << (btn-1);
@@ -495,17 +490,34 @@ bpress(XEvent *e)
 		 * snapping behaviour is exposed.
 		 */
 		clock_gettime(CLOCK_MONOTONIC, &now);
-		if (TIMEDIFF(now, xsel.tclick2) <= tripleclicktimeout) {
-			snap = SNAP_LINE;
-		} else if (TIMEDIFF(now, xsel.tclick1) <= doubleclicktimeout) {
-			snap = SNAP_WORD;
+		int const tripleClick = TIMEDIFF(now, xsel.tclick2) <= tripleclicktimeout,
+		doubleClick = TIMEDIFF(now, xsel.tclick1) <= doubleclicktimeout;
+		if ((mouseYank || mouseSelect) && (tripleClick || doubleClick)) {
+			if (!IS_SET(MODE_NORMAL)) normalMode();
+			historyOpToggle(1, 1);
+			tmoveto(evcol(e), evrow(e));
+			if (tripleClick) {
+				if (mouseYank) pressKeys("dVy", 3);
+				if (mouseSelect) pressKeys("dV", 2);
+			} else if (doubleClick) {
+				if (mouseYank) pressKeys("dyiW", 4);
+				if (mouseSelect) {
+					tmoveto(evcol(e), evrow(e));
+					pressKeys("viW", 3);
+				}
+			}
+			historyOpToggle(-1, 1);
 		} else {
-			snap = 0;
+			if (!IS_SET(MODE_NORMAL)) selstart(evcol(e), evrow(e), 0);
+			else {
+				historyOpToggle(1, 1);
+				tmoveto(evcol(e), evrow(e));
+				pressKeys("v", 1);
+				historyOpToggle(-1, 1);
+			}
 		}
 		xsel.tclick2 = xsel.tclick1;
 		xsel.tclick1 = now;
-
-		selstart(evcol(e), evrow(e), snap);
 	}
 }
 
@@ -758,7 +770,7 @@ xresize(int col, int row)
 
 	XFreePixmap(xw.dpy, xw.buf);
 	xw.buf = XCreatePixmap(xw.dpy, xw.win, win.w, win.h,
-			xw.depth);
+			DefaultDepth(xw.dpy, xw.scr));
 	XftDrawChange(xw.draw, xw.buf);
 	xclear(0, 0, win.w, win.h);
 
@@ -796,6 +808,8 @@ xloadcolor(int i, const char *name, Color *ncolor)
 	return XftColorAllocName(xw.dpy, xw.vis, xw.cmap, name, ncolor);
 }
 
+void normalMode() { historyModeToggle((win.mode ^=MODE_NORMAL) & MODE_NORMAL); }
+
 void
 xloadcols(void)
 {
@@ -807,7 +821,7 @@ xloadcols(void)
 		for (cp = dc.col; cp < &dc.col[dc.collen]; ++cp)
 			XftColorFree(xw.dpy, xw.vis, xw.cmap, cp);
 	} else {
-		dc.collen = 258;
+		dc.collen = MAX(LEN(colorname), 256);
 		dc.col = xmalloc(dc.collen * sizeof(Color));
 	}
 
@@ -818,13 +832,6 @@ xloadcols(void)
 			else
 				die("could not allocate color %d\n", i);
 		}
-
-	/* set alpha value of bg color */
-	if (opt_alpha)
-		alpha = strtof(opt_alpha, NULL);
-	dc.col[defaultbg].color.alpha = (unsigned short)(0xffff * alpha);
-	dc.col[defaultbg].pixel &= 0x00FFFFFF;
-	dc.col[defaultbg].pixel |= (unsigned char)(0xff * alpha) << 24;
 	loaded = 1;
 }
 
@@ -994,18 +1001,6 @@ xloadfont(Font *f, FcPattern *pattern)
 }
 
 void
-cyclefonts(const Arg *dummy)
-{
-	fonts_current++;
-	if (fonts_current > (sizeof fonts / sizeof fonts[0]) - 1) {
-		fonts_current = 0;
-	}
-	usedfont = fonts[fonts_current];
-	xloadfonts(fonts[fonts_current], 0);
-	redraw();
-}
-
-void
 xloadfonts(const char *fontstr, double fontsize)
 {
 	FcPattern *pattern;
@@ -1159,33 +1154,21 @@ xinit(int cols, int rows)
 	Window parent;
 	pid_t thispid = getpid();
 	XColor xmousefg, xmousebg;
-	XWindowAttributes attr;
-	XVisualInfo vis;
 
 	if (!(xw.dpy = XOpenDisplay(NULL)))
 		die("can't open display\n");
 	xw.scr = XDefaultScreen(xw.dpy);
-
-	if (!(opt_embed && (parent = strtol(opt_embed, NULL, 0)))) {
-		parent = XRootWindow(xw.dpy, xw.scr);
-		xw.depth = 32;
-	} else {
-		XGetWindowAttributes(xw.dpy, parent, &attr);
-		xw.depth = attr.depth;
-	}
-
-	XMatchVisualInfo(xw.dpy, xw.scr, xw.depth, TrueColor, &vis);
-	xw.vis = vis.visual;
+	xw.vis = XDefaultVisual(xw.dpy, xw.scr);
 
 	/* font */
 	if (!FcInit())
 		die("could not init fontconfig.\n");
 
-	usedfont = fonts[fonts_current];
-	xloadfonts(fonts[fonts_current], 0);
+	usedfont = (opt_font == NULL)? font : opt_font;
+	xloadfonts(usedfont, 0);
 
 	/* colors */
-	xw.cmap = XCreateColormap(xw.dpy, parent, xw.vis, None);
+	xw.cmap = XDefaultColormap(xw.dpy, xw.scr);
 	xloadcols();
 
 	/* adjust fixed window geometry */
@@ -1205,15 +1188,19 @@ xinit(int cols, int rows)
 		| ButtonMotionMask | ButtonPressMask | ButtonReleaseMask;
 	xw.attrs.colormap = xw.cmap;
 
+	if (!(opt_embed && (parent = strtol(opt_embed, NULL, 0))))
+		parent = XRootWindow(xw.dpy, xw.scr);
 	xw.win = XCreateWindow(xw.dpy, parent, xw.l, xw.t,
-			win.w, win.h, 0, xw.depth, InputOutput,
+			win.w, win.h, 0, XDefaultDepth(xw.dpy, xw.scr), InputOutput,
 			xw.vis, CWBackPixel | CWBorderPixel | CWBitGravity
 			| CWEventMask | CWColormap, &xw.attrs);
 
 	memset(&gcvalues, 0, sizeof(gcvalues));
 	gcvalues.graphics_exposures = False;
-	xw.buf = XCreatePixmap(xw.dpy, xw.win, win.w, win.h, xw.depth);
-	dc.gc = XCreateGC(xw.dpy, xw.buf, GCGraphicsExposures, &gcvalues);
+	dc.gc = XCreateGC(xw.dpy, parent, GCGraphicsExposures,
+			&gcvalues);
+	xw.buf = XCreatePixmap(xw.dpy, xw.win, win.w, win.h,
+			DefaultDepth(xw.dpy, xw.scr));
 	XSetForeground(xw.dpy, dc.gc, dc.col[defaultbg].pixel);
 	XFillRectangle(xw.dpy, xw.buf, dc.gc, 0, 0, win.w, win.h);
 
@@ -1290,8 +1277,10 @@ xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x
 
 	for (i = 0, xp = winx, yp = winy + font->ascent; i < len; ++i) {
 		/* Fetch rune and mode for current glyph. */
-		rune = glyphs[i].u;
-		mode = glyphs[i].mode;
+		Glyph g = glyphs[i];
+		historyOverlay(x+i, y, &g);
+		rune = g.u;
+		mode = g.mode;
 
 		/* Skip dummy wide-character spacing. */
 		if (mode == ATTR_WDUMMY)
@@ -1689,6 +1678,7 @@ xdrawline(Line line, int x1, int y1, int x2)
 	i = ox = 0;
 	for (x = x1; x < x2 && i < numspecs; x++) {
 		new = line[x];
+		historyOverlay(x, y1, &new);
 		if (new.mode == ATTR_WDUMMY)
 			continue;
 		if (selected(x, y1))
@@ -1880,6 +1870,11 @@ kpress(XEvent *ev)
 		len = XmbLookupString(xw.ime.xic, e, buf, sizeof buf, &ksym, &status);
 	else
 		len = XLookupString(e, buf, sizeof buf, &ksym, NULL);
+	if (IS_SET(MODE_NORMAL)) {
+		if (kPressHist(buf, len, match(ControlMask, e->state), &ksym)
+		                                      == finish) normalMode();
+		return;
+	}
 	/* 1. shortcuts */
 	for (bp = shortcuts; bp < shortcuts + LEN(shortcuts); bp++) {
 		if (ksym == bp->keysym && match(bp->mod, e->state)) {
@@ -2057,47 +2052,6 @@ usage(void)
 	    " [stty_args ...]\n", argv0, argv0);
 }
 
-void
-nextscheme(const Arg *arg)
-{
-	colorscheme += arg->i;
-	if (colorscheme >= (int)LEN(schemes))
-		colorscheme = 0;
-	else if (colorscheme < 0)
-		colorscheme = LEN(schemes) - 1;
-	updatescheme();
-}
-
-void
-selectscheme(const Arg *arg)
-{
-	if (BETWEEN(arg->i, 0, LEN(schemes)-1)) {
-		colorscheme = arg->i;
-		updatescheme();
-	}
-}
-
-void
-updatescheme(void)
-{
-	int oldbg, oldfg;
-
-	oldbg = defaultbg;
-	oldfg = defaultfg;
-	colorname = schemes[colorscheme].colors;
-	defaultbg = schemes[colorscheme].bg;
-	defaultfg = schemes[colorscheme].fg;
-	defaultcs = schemes[colorscheme].cs;
-	defaultrcs = schemes[colorscheme].rcs;
-	xloadcols();
-	if (defaultbg != oldbg)
-		tupdatebgcolor(oldbg, defaultbg);
-	if (defaultfg != oldfg)
-		tupdatefgcolor(oldfg, defaultfg);
-	cresize(win.w, win.h);
-	redraw();
-}
-
 int
 main(int argc, char *argv[])
 {
@@ -2108,9 +2062,6 @@ main(int argc, char *argv[])
 	ARGBEGIN {
 	case 'a':
 		allowaltscreen = 0;
-		break;
-	case 'A':
-		opt_alpha = EARGF(usage());
 		break;
 	case 'c':
 		opt_class = EARGF(usage());
@@ -2153,12 +2104,6 @@ main(int argc, char *argv[])
 	} ARGEND;
 
 run:
-	colorname = schemes[colorscheme].colors;
-	defaultbg = schemes[colorscheme].bg;
-	defaultfg = schemes[colorscheme].fg;
-	defaultcs = schemes[colorscheme].cs;
-	defaultrcs = schemes[colorscheme].rcs;
-
 	if (argc > 0) /* eat all remaining arguments */
 		opt_cmd = argv;
 
