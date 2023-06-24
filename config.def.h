@@ -102,7 +102,7 @@ static const char *colorname[] = {
 	"yellow3",
 	"blue2",
 	"magenta3",
-	"cyan3",
+	"#003b00",
 	"gray90",
 
 	/* 8 bright colors */
@@ -112,14 +112,14 @@ static const char *colorname[] = {
 	"yellow",
 	"#5c5cff",
 	"magenta",
-	"cyan",
+	"#003b00",
 	"white",
 
 	[255] = 0,
 
 	/* more colors can be added after 255 to use with DefaultXX */
 	"#cccccc",
-	"#f26711",
+	"#003b00",
 	"#ffffff", /* default foreground colour */
 	"#000000", /* default background colour */
 };
@@ -137,7 +137,7 @@ unsigned int const currentBg = 6, buffSize = 2048;
 /// Enable double / triple click yanking / selection of word / line.
 int const mouseYank = 1, mouseSelect = 0;
 /// [Vim Browse] Colors for search results currently on screen.
-unsigned int const highlightBg = 256, highlightFg = 256;
+unsigned int const highlightBg = 256, highlightFg = 260;
 char const wDelS[] = "!\"#$%&'()*+,-./:;<=>?@[\\]^`{|}~", wDelL[] = " \t";
 char *nmKeys [] = {              ///< Shortcusts executed in normal mode
   "R/Building\nN", "r/Building\n", "X/juli@machine\nN", "x/juli@machine\n",
@@ -146,7 +146,7 @@ char *nmKeys [] = {              ///< Shortcusts executed in normal mode
 unsigned int const amountNmKeys = sizeof(nmKeys) / sizeof(*nmKeys);
 /// Style of the {command, search} string shown in the right corner (y,v,V,/)
 Glyph styleSearch = {' ', ATTR_ITALIC | ATTR_BOLD_FAINT, 7, 16};
-Glyph style[] = {{' ',ATTR_ITALIC|ATTR_FAINT,15,16}, {' ',ATTR_ITALIC,232,11},
+Glyph style[] = {{' ',ATTR_ITALIC|ATTR_FAINT,16,16}, {' ',ATTR_ITALIC,232,11},
                  {' ', ATTR_ITALIC, 232, 4}, {' ', ATTR_ITALIC, 232, 12}};
 
 /*
